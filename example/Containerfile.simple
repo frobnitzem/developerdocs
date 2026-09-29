@@ -1,0 +1,90 @@
+# Combined producer + forwarder + job server.
+# Standalone - all sources are fetched from GitHub.
+#
+# Build with:
+#
+#   podman build -f developerdocs/example/Containerfile.producer -t lclstream-producer developerdocs/example/
+#
+# Runtime: psik_api serves job submission over mTLS (certified).
+#
+# Send a job targeting the default backend to spawn
+# lclstreamer and lclstream-fastcache as subprocesses.
+#
+# This is a simple pip build of lclstreamer, so it only provides the
+# InternalEventSource producer (no psana).
+
+# ── fastcache binary ─────────────────────────────────────────────────
+FROM docker.io/debian:trixie-slim AS fastcache-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake ninja-build git curl zip unzip tar pkg-config \
+    build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --filter=blob:none https://github.com/microsoft/vcpkg /opt/vcpkg \
+    && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+ENV VCPKG_ROOT=/opt/vcpkg
+
+RUN git clone --branch main --depth=1 \
+    https://github.com/lclstream/fastcache.git /build
+
+WORKDIR /build
+
+RUN --mount=type=cache,target=/root/.cache/vcpkg \
+    VCPKG_BINARY_SOURCES="clear;files,/root/.cache/vcpkg,readwrite" \
+    cmake --preset default \
+    && cmake --build build --preset default
+
+# ── lclstreamer and psik_api on Python 3.13 ────────────────────────
+# ubuntu:26.04 ships Python 3.14; certified's pyo3 deps don't have 3.14 wheels
+# yet. Build on the same trixie slim image the upstream psik_api Dockerfile uses.
+FROM python:3.13-slim-trixie AS psik-build
+ARG PSIK_API_VERSION=3.0.0
+ARG LCLSTREAMER_VERSION=3f6df8f49beed5be0d60879652a3657edfe184a3
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git gcc libhdf5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install git+https://github.com/lclstream/lclstreamer.git@${LCLSTREAMER_VERSION}
+RUN pip install mpi4py # required by lclstreamer
+# Note bitshuffle compiles against the libhdf5-dev above, which will
+# likely cause errors if its hdf5 features are actually used - since
+# the final image relies on h5py's bundled libs and doesn't include the
+# system libs here.
+RUN pip install bitshuffle # required by lclstreamer
+RUN pip install hdf5plugin # required by lclstreamer
+RUN pip install git+https://github.com/frobnitzem/psik_api@v${PSIK_API_VERSION}
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+FROM ubuntu:26.04
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        file wget ca-certificates openmpi-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+# fastcache forwarder binary
+COPY --from=fastcache-build /build/build/lclstream-fastcache /usr/local/bin/lclstream-fastcache
+
+# Python 3.13 interpreter + psik_api + certified (scripts, site-packages, certs)
+# /usr/local on a fresh ubuntu:26.04 image is empty, so no conflicts.
+COPY --from=psik-build /usr/local /usr/local
+
+# Self-signed cert for dev/local use; mount /etc/certified to override.
+RUN certified init 'LCLStream Producer' \
+        --host 127.0.0.1 \
+        --host ::1 \
+        --host localhost
+
+# Main configuration file for psik_api access
+COPY ./psik_api.json /etc/psik_api.json
+
+# Auxilliary, optional configuration file for running
+# psik within the container.
+# Defines local (direct execution) and api (localhost:4433 -> psik_api) backends.
+COPY ./psik.json /etc/psik.json
+
+WORKDIR /app/lclstreamer
+CMD ["certified", "serve", "psik_api.main:app", "https://0.0.0.0:4433"]
