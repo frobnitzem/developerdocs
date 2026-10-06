@@ -1,0 +1,13 @@
+name: lclstreamer_test
+script: |
+  pwd
+  echo jobid=$jobid jobndx=$jobndx
+  lclstreamer --config /app/lclstreamer/lclstreamer.yaml
+
+callback: https://localhost:8000/v1/callbacks/producer
+backend: psik_local
+resources:
+  duration: 30
+  node_count: 1
+  processes_per_node: 2
+  cpu_cores_per_process: 1

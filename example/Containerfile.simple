@@ -86,5 +86,13 @@ COPY ./psik_api.json /etc/psik_api.json
 # Defines local (direct execution) and api (localhost:4433 -> psik_api) backends.
 COPY ./psik.json /etc/psik.json
 
+# Can create and run as a user, but then the /etc/certified
+# credentials would no longer be readable.
+#
+#RUN useradd --system --create-home --home-dir /app/lclstreamer lclstream \
+#    && chown lclstream:lclstream /app/lclstreamer \
+#    && mkdir -p /tmp/psik_api && chown lclstream:lclstream /tmp/psik_api
+#USER lclstream
+
 WORKDIR /app/lclstreamer
 CMD ["certified", "serve", "psik_api.main:app", "https://0.0.0.0:4433"]
