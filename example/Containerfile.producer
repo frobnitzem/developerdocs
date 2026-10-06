@@ -46,8 +46,10 @@ RUN git clone --filter=blob:none https://github.com/microsoft/vcpkg /opt/vcpkg \
 
 ENV VCPKG_ROOT=/opt/vcpkg
 
-RUN git clone --branch main --depth=1 \
-    https://github.com/lclstream/fastcache.git /build
+#RUN git clone --branch main --depth=1 \
+#    https://github.com/lclstream/fastcache.git /build
+RUN git clone --branch dev --depth=1 \
+    https://github.com/frobnitzem/fastcache.git /build
 
 WORKDIR /build
 
