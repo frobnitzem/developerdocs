@@ -1,0 +1,30 @@
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: oauth2-proxy
+    redirectURIs:
+      - 'http://127.0.0.1:4180/oauth2/callback'
+      - 'http://127.0.0.1:18855/callback'
+    name: oauth2-proxy
+    secret: proxy-client-secret
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: alice@test.local
+    hash: "$2b$12$Lm4Nu0nYnt7NCGdnpMr9z.olvaU/AI4B9FoY9ne/eTOE6By6wFcmC"
+    username: alice
+    userID: alice-0001
+  - email: bob@test.local
+    hash: "$2b$12$rZx9HxLV9Fk5nP25RExkBedVhR21y/6.ay9VKZc.MkOf3Ax6481BS"
+    username: bob
+    userID: bob-0002
