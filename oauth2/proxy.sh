@@ -11,7 +11,7 @@
 # X-Auth-Request-User for session-based auth (bearer-token bypass
 # path decodes the JWT directly in auth_proxy.py instead).
 
-
+source .env
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 16 random bytes as 32 hex chars (valid AES-128 key length for cookie encryption)
@@ -22,7 +22,7 @@ podman run --network host \
     --provider=oidc \
     --oidc-issuer-url=http://127.0.0.1:5556/dex \
     --client-id=oauth2-proxy \
-    --client-secret=proxy-client-secret \
+    --client-secret="$LCLSTREAM_CLIENT_SECRET" \
     --redirect-url=http://127.0.0.1:4180/oauth2/callback \
     --upstream=https://127.0.0.1:8000 \
     --ssl-upstream-insecure-skip-verify=true \

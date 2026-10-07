@@ -15,7 +15,7 @@ staticClients:
       - 'http://127.0.0.1:4180/oauth2/callback'
       - 'http://127.0.0.1:18855/callback'
     name: oauth2-proxy
-    secret: proxy-client-secret
+    secret: ${LCLSTREAM_CLIENT_SECRET}
 
 enablePasswordDB: true
 

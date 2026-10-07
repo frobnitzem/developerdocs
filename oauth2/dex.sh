@@ -5,6 +5,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -a
+# shellcheck source=.env
+source "$SCRIPT_DIR/.env"
+set +a
+
+envsubst '${LCLSTREAM_CLIENT_SECRET}' < "$SCRIPT_DIR/dex/config.yaml" > "$SCRIPT_DIR/dex/config.live.yaml"
+
 podman run --network host \
-           -v "$SCRIPT_DIR/dex/config.yaml:/etc/dex/config.docker.yaml:ro" \
+           -v "$SCRIPT_DIR/dex/config.live.yaml:/etc/dex/config.docker.yaml:ro" \
            -d docker.io/dexidp/dex:v2.41.1

@@ -1,0 +1,98 @@
+# podman-kube.yaml — four-service oauth2 dev stack
+#
+# All dynamic values come from named podman resources created by bootstrap.sh.
+# This file is static: no template substitution is required to apply it.
+#
+# Secrets:
+#   lclstream-cookie-secret   oauth2-proxy cookie encryption key
+#   lclstream-client-secret   OIDC client secret (Dex ↔ oauth2-proxy)
+#   lclstream-dex-config      rendered dex/config.yaml with client secret embedded
+#
+# Volume:
+#   lclstream-certified       certified TLS identity, shared by producer and api
+#
+# Files expected in $PWD when `podman kube play` is invoked (bootstrap.sh cds here):
+#   ./serve.py                symlink → ../oauth2/serve.py  (created by bootstrap.sh)
+#
+# Port layout:
+#   :4433  lclstream-simple  psik_api (producer, mTLS)
+#   :8000  lclstream-api     (TLS; proxy is auth boundary)
+#   :5556  dex               OIDC provider
+#   :4180  oauth2-proxy      JWT Bearer / session auth → :8000
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lclstream-oauth2
+spec:
+  hostNetwork: true
+
+  containers:
+
+  - name: producer
+    image: localhost/lclstream-simple:latest
+    volumeMounts:
+    - mountPath: /etc/certified
+      name: certified
+
+  - name: api
+    image: localhost/lclstream-api:latest
+    # Override default CMD (uvicorn) with the volume-mounted serve.py,
+    # which disables client-cert enforcement so JWT auth via the proxy works.
+    command: ["/app/.venv/bin/python", "/app/serve.py"]
+    volumeMounts:
+    - mountPath: /etc/certified
+      name: certified
+    - mountPath: /app/serve.py
+      name: serve-py
+      readOnly: true
+
+  - name: dex
+    image: docker.io/dexidp/dex:v2.41.1
+    # lclstream-dex-config is mounted as a directory; the file inside is named
+    # after the secret: /run/secrets/lclstream-dex-config.
+    args: ["serve", "/run/secrets/lclstream-dex-config"]
+    volumeMounts:
+    - mountPath: /run/secrets
+      name: dex-config
+
+  - name: oauth2-proxy
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    env:
+    - name: OAUTH2_PROXY_COOKIE_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: lclstream-cookie-secret
+          key: lclstream-cookie-secret
+    - name: OAUTH2_PROXY_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: lclstream-client-secret
+          key: lclstream-client-secret
+    args:
+    - --provider=oidc
+    - --oidc-issuer-url=http://127.0.0.1:5556/dex
+    - --client-id=oauth2-proxy
+    - --redirect-url=http://127.0.0.1:4180/oauth2/callback
+    - --upstream=https://127.0.0.1:8000
+    - --ssl-upstream-insecure-skip-verify=true
+    - --skip-jwt-bearer-tokens=true
+    - --http-address=0.0.0.0:4180
+    - --email-domain=*
+    - --insecure-oidc-allow-unverified-email=true
+    - --pass-authorization-header=true
+    - --pass-access-token=true
+    - --set-xauthrequest=true
+    - --api-route=^/v1/
+
+  volumes:
+  - name: certified
+    persistentVolumeClaim:
+      claimName: lclstream-certified
+  - name: serve-py
+    hostPath:
+      path: ./serve.py
+      type: File
+  - name: dex-config
+    secret:
+      secretName: lclstream-dex-config
